@@ -1,0 +1,473 @@
+import cv2
+import numpy as np
+
+caminho = r"C:\Users\DELL\Desktop\laranjas2.jpg"
+
+imagem_original = cv2.imread(caminho)
+
+if imagem_original is None:
+    print("Erro: não foi possível carregar a imagem.")
+    exit()
+
+# Reduz a imagem para processamento
+imagem = cv2.resize(
+    imagem_original,
+    None,
+    fx=0.8,
+    fy=0.8
+)
+
+cv2.namedWindow("Controles", cv2.WINDOW_NORMAL)
+cv2.resizeWindow("Controles", 450, 700)
+
+cv2.createTrackbar(
+    "H min",
+    "Controles",
+    0,
+    179,
+    lambda x: None
+)
+
+cv2.createTrackbar(
+    "H max",
+    "Controles",
+    33,
+    179,
+    lambda x: None
+)
+
+cv2.createTrackbar(
+    "S min",
+    "Controles",
+    99,
+    255,
+    lambda x: None
+)
+
+cv2.createTrackbar(
+    "S max",
+    "Controles",
+    255,
+    255,
+    lambda x: None
+)
+
+cv2.createTrackbar(
+    "V min",
+    "Controles",
+    82,
+    255,
+    lambda x: None
+)
+
+cv2.createTrackbar(
+    "V max",
+    "Controles",
+    255,
+    255,
+    lambda x: None
+)
+
+cv2.createTrackbar(
+    "Kernel",
+    "Controles",
+    3,
+    31,
+    lambda x: None
+)
+
+cv2.createTrackbar(
+    "Iteracoes",
+    "Controles",
+    2,
+    10,
+    lambda x: None
+)
+
+cv2.createTrackbar(
+    "Area minima Blob",
+    "Controles",
+    100,
+    10000,
+    lambda x: None
+)
+
+cv2.createTrackbar(
+    "Distancia Watershed",
+    "Controles",
+    20,
+    100,
+    lambda x: None
+)
+
+cv2.createTrackbar(
+    "Area minima Watershed",
+    "Controles",
+    100,
+    10000,
+    lambda x: None
+)
+
+
+while True:
+
+    h_min = cv2.getTrackbarPos(
+        "H min",
+        "Controles"
+    )
+
+    h_max = cv2.getTrackbarPos(
+        "H max",
+        "Controles"
+    )
+
+    s_min = cv2.getTrackbarPos(
+        "S min",
+        "Controles"
+    )
+
+    s_max = cv2.getTrackbarPos(
+        "S max",
+        "Controles"
+    )
+
+    v_min = cv2.getTrackbarPos(
+        "V min",
+        "Controles"
+    )
+
+    v_max = cv2.getTrackbarPos(
+        "V max",
+        "Controles"
+    )
+
+    kernel_tamanho = cv2.getTrackbarPos(
+        "Kernel",
+        "Controles"
+    )
+
+    if kernel_tamanho < 1:
+        kernel_tamanho = 1
+
+    if kernel_tamanho % 2 == 0:
+        kernel_tamanho += 1
+
+    iteracoes = cv2.getTrackbarPos(
+        "Iteracoes",
+        "Controles"
+    )
+
+    if iteracoes < 1:
+        iteracoes = 1
+
+    area_min_blob = cv2.getTrackbarPos(
+        "Area minima Blob",
+        "Controles"
+    )
+
+    hsv = cv2.cvtColor(
+        imagem,
+        cv2.COLOR_BGR2HSV
+    )
+
+    limite_inferior = np.array([
+        h_min,
+        s_min,
+        v_min
+    ])
+
+    limite_superior = np.array([
+        h_max,
+        s_max,
+        v_max
+    ])
+
+    mascara = cv2.inRange(
+        hsv,
+        limite_inferior,
+        limite_superior
+    )
+
+    kernel = cv2.getStructuringElement(
+        cv2.MORPH_ELLIPSE,
+        (kernel_tamanho, kernel_tamanho)
+    )
+
+    mascara = cv2.morphologyEx(
+        mascara,
+        cv2.MORPH_OPEN,
+        kernel,
+        iterations=iteracoes
+    )
+
+    mascara = cv2.morphologyEx(
+        mascara,
+        cv2.MORPH_CLOSE,
+        kernel,
+        iterations=iteracoes
+    )
+
+    num_labels, labels, stats, centroids = \
+        cv2.connectedComponentsWithStats(
+            mascara,
+            connectivity=8
+        )
+
+    imagem_blobs = imagem.copy()
+
+    contador_blobs = 0
+
+    for i in range(1, num_labels):
+
+        area = stats[
+            i,
+            cv2.CC_STAT_AREA
+        ]
+
+        if area >= area_min_blob:
+
+            cx, cy = centroids[i]
+
+            contador_blobs += 1
+
+            # Pequeno ponto vermelho
+            cv2.circle(
+                imagem_blobs,
+                (int(cx), int(cy)),
+                3,
+                (0, 0, 255),
+                -1
+            )
+
+            # Número pequeno
+            cv2.putText(
+                imagem_blobs,
+                str(contador_blobs),
+                (
+                    int(cx) + 5,
+                    int(cy) - 5
+                ),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.45,
+                (0, 0, 255),
+                1
+            )
+
+    distancia_percentual = cv2.getTrackbarPos(
+        "Distancia Watershed",
+        "Controles"
+    )
+
+    area_min_watershed = cv2.getTrackbarPos(
+        "Area minima Watershed",
+        "Controles"
+    )
+
+    if distancia_percentual < 1:
+        distancia_percentual = 1
+
+    dist_transform = cv2.distanceTransform(
+        mascara,
+        cv2.DIST_L2,
+        5
+    )
+
+    maior_distancia = dist_transform.max()
+
+    limite_distancia = (
+        maior_distancia *
+        distancia_percentual / 100
+    )
+
+    sure_fg = np.uint8(
+        dist_transform >= limite_distancia
+    ) * 255
+
+    sure_bg = cv2.dilate(
+        mascara,
+        kernel,
+        iterations=3
+    )
+
+    unknown = cv2.subtract(
+        sure_bg,
+        sure_fg
+    )
+
+    num_markers, markers = cv2.connectedComponents(
+        sure_fg
+    )
+
+    markers = markers + 1
+
+    markers[unknown == 255] = 0
+
+    imagem_watershed = imagem.copy()
+
+    cv2.watershed(
+        imagem_watershed,
+        markers
+    )
+
+    resultado = imagem.copy()
+
+    contador = 0
+
+    for marker_id in range(
+        2,
+        num_markers + 1
+    ):
+
+        regiao = np.uint8(
+            markers == marker_id
+        ) * 255
+
+        area = cv2.countNonZero(
+            regiao
+        )
+
+        if area >= area_min_watershed:
+
+            contornos, _ = cv2.findContours(
+                regiao,
+                cv2.RETR_EXTERNAL,
+                cv2.CHAIN_APPROX_SIMPLE
+            )
+
+            if len(contornos) > 0:
+
+                maior_contorno = max(
+                    contornos,
+                    key=cv2.contourArea
+                )
+
+                area_contorno = cv2.contourArea(
+                    maior_contorno
+                )
+
+                if area_contorno >= area_min_watershed:
+
+                    contador += 1
+
+
+                    M = cv2.moments(
+                        maior_contorno
+                    )
+
+                    if M["m00"] != 0:
+
+                        cx = int(
+                            M["m10"] /
+                            M["m00"]
+                        )
+
+                        cy = int(
+                            M["m01"] /
+                            M["m00"]
+                        )
+
+
+                        cv2.circle(
+                            resultado,
+                            (cx, cy),
+                            3,
+                            (0, 0, 255),
+                            -1
+                        )
+
+
+                        cv2.putText(
+                            resultado,
+                            str(contador),
+                            (
+                                cx + 5,
+                                cy - 5
+                            ),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.45,
+                            (0, 0, 255),
+                            1
+                        )
+
+
+    cv2.putText(
+        resultado,
+        str(contador),
+        (15, 30),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.8,
+        (255, 0, 0),
+        2
+    )
+
+    resultado_exibicao = cv2.resize(
+        resultado,
+        None,
+        fx=2,
+        fy=2,
+        interpolation=cv2.INTER_LINEAR
+    )
+
+    blobs_exibicao = cv2.resize(
+        imagem_blobs,
+        None,
+        fx=2,
+        fy=2,
+        interpolation=cv2.INTER_LINEAR
+    )
+
+    mascara_exibicao = cv2.resize(
+        mascara,
+        None,
+        fx=2,
+        fy=2,
+        interpolation=cv2.INTER_NEAREST
+    )
+
+    dist_exibicao = cv2.normalize(
+        dist_transform,
+        None,
+        0,
+        255,
+        cv2.NORM_MINMAX
+    )
+
+    dist_exibicao = np.uint8(
+        dist_exibicao
+    )
+
+    dist_exibicao = cv2.resize(
+        dist_exibicao,
+        None,
+        fx=2,
+        fy=2,
+        interpolation=cv2.INTER_NEAREST
+    )
+
+
+    cv2.imshow(
+        "Resultado Watershed",
+        resultado_exibicao
+    )
+
+    cv2.imshow(
+        "Blobs",
+        blobs_exibicao
+    )
+
+    cv2.imshow(
+        "Mascara HSV",
+        mascara_exibicao
+    )
+
+    cv2.imshow(
+        "Transformada de Distancia",
+        dist_exibicao
+    )
+
+    tecla = cv2.waitKey(30) & 0xFF
+
+    if tecla == 27:
+        break
+
+cv2.destroyAllWindows()
